@@ -1,0 +1,55 @@
+# Compiled binaries from `go build` in example dirs
+examples/basic/basic
+examples/chat-cache/chat-cache
+examples/feature-flags/feature-flags
+examples/p2p/p2p
+examples/redis/redis
+examples/ws-routing/ws-routing
+
+# Test + coverage output
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace overrides (keep go.mod / go.sum, not local-only files)
+go.work
+go.work.sum
+
+# Fuzz cache — corpus under testdata/fuzz/ IS committed, only the
+# local cache directory is not.
+.fuzz-cache/
+
+# Editor / OS metadata
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local environment files
+.env
+.env.local
+.envrc
+
+# Profiling output
+*.prof
+*.pprof
+cpu.out
+mem.out
+
+# AI tooling — local state and per-user rule files
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.windsurf/
+.continue/
+.copilot/
+.codeium/
+.codeiumignore
+CLAUDE.md
+AGENT.md
+AGENTS.md
+.ai/
