@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Don't pile up duplicate CI runs when a branch is force-pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test / vet / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Reads `go 1.26` from go.mod — single source of truth.
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build all examples
+        run: go build ./examples/...
+
+      - name: Test (race detector)
+        run: go test -race -timeout 120s ./...
+
+  fuzz:
+    name: fuzz frame parser
+    runs-on: ubuntu-latest
+    # Don't gate PRs on fuzz; only run on main pushes where we can
+    # accept the 30s cost.
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: Fuzz readFrame
+        run: go test -fuzz=FuzzReadFrame -fuzztime=30s -run='^$' ./transport

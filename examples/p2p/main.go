@@ -38,10 +38,10 @@ func main() {
 			Listen:            addr,
 			Peers:             peers,
 			ReconnectInterval: 200 * time.Millisecond,
-			OnError: func(e error) {
-				// Dial errors during startup are expected — the peer
-				// hasn't bound its port yet. Suppress in this demo.
-			},
+			// Demo: OnError is omitted, so transport errors are silent.
+			// Production should wire OnError to your logger — startup
+			// "connection refused" against a not-yet-listening peer is
+			// expected, but anything else is signal.
 		})
 		if err != nil {
 			log.Fatal(err)

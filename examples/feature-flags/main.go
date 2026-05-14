@@ -42,10 +42,17 @@ func main() {
 	go func() {
 		events := worker.Watch(ctx)
 		for ev := range events {
-			fmt.Printf("[worker] flag %q -> %s by %s (rollout=%d%%, %q)\n",
-				ev.Key, ev.Kind, ev.Origin, ev.Value.Rollout, ev.Value.Note)
-			f := ev.Value
-			current.Store(&f)
+			switch ev.Kind {
+			case podshare.EventSet:
+				fmt.Printf("[worker] flag %q -> set by %s (rollout=%d%%, %q)\n",
+					ev.Key, ev.Origin, ev.Value.Rollout, ev.Value.Note)
+				f := ev.Value
+				current.Store(&f)
+			case podshare.EventDelete:
+				fmt.Printf("[worker] flag %q -> delete by %s; clearing local pointer\n",
+					ev.Key, ev.Origin)
+				current.Store(nil)
+			}
 		}
 		// Channel closed: either ctx cancelled or we fell behind. Real
 		// applications should re-Watch and re-snapshot via Get here.
@@ -71,12 +78,15 @@ func main() {
 		}
 	}
 
-	// Roll back via Delete — workers see ev.Kind == EventDelete and can
-	// clear their atomic pointer.
+	// Roll back via Delete — workers see ev.Kind == EventDelete and
+	// clear their atomic pointer, so lock-free reads return nil again.
 	if err := operator.Delete(ctx, "new-checkout"); err != nil {
 		log.Printf("delete: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)
+	if current.Load() == nil {
+		fmt.Println("  ↳ application reads nil after rollback (lock-free)")
+	}
 }
 
 func mustNew(ctx context.Context, tr podshare.Transport, nodeID string) *podshare.Store[Flag] {
