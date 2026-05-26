@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.PodID}} · podshare web demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #06070b;
+        --panel: #0e1119;
+        --panel-2: #161a25;
+        --line: #1f2433;
+        --fg: #f1f3f7;
+        --muted: #7a8398;
+        --teal: #5eead4;
+        --purple: #c084fc;
+        --amber: #fbbf24;
+        --good: #4ade80;
+        --warn: #fb923c;
+      }
+      [data-color="teal"] {
+        --accent: var(--teal);
+        --accent-glow: rgba(94, 234, 212, 0.35);
+      }
+      [data-color="purple"] {
+        --accent: var(--purple);
+        --accent-glow: rgba(192, 132, 252, 0.35);
+      }
+      [data-color="amber"] {
+        --accent: var(--amber);
+        --accent-glow: rgba(251, 191, 36, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Inter", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: radial-gradient(
+          circle at 1px 1px,
+          rgba(255, 255, 255, 0.02) 1px,
+          transparent 0
+        );
+        background-size: 32px 32px;
+        pointer-events: none;
+      }
+      code,
+      pre {
+        font-family: "JetBrains Mono", monospace;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 24px 60px;
+        position: relative;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 28px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .me {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .me .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 14px var(--accent-glow);
+      }
+      .me .id {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--accent);
+      }
+      .me .port {
+        color: var(--muted);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+      }
+      .peers {
+        display: flex;
+        gap: 10px;
+      }
+      .peer-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 0.85rem;
+        font-family: "JetBrains Mono", monospace;
+        text-decoration: none;
+        transition: all 0.12s ease;
+      }
+      .peer-link:hover {
+        color: var(--fg);
+      }
+      .peer-link .pdot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .peer-link[data-pc="teal"] .pdot { background: var(--teal); }
+      .peer-link[data-pc="purple"] .pdot { background: var(--purple); }
+      .peer-link[data-pc="amber"] .pdot { background: var(--amber); }
+      .peer-link[data-pc="teal"]:hover { border-color: var(--teal); }
+      .peer-link[data-pc="purple"]:hover { border-color: var(--purple); }
+      .peer-link[data-pc="amber"]:hover { border-color: var(--amber); }
+
+      .hint {
+        background: rgba(94, 234, 212, 0.04);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--accent);
+        padding: 14px 18px;
+        border-radius: 6px;
+        font-size: 0.92rem;
+        color: var(--muted);
+        margin-bottom: 28px;
+      }
+      .hint b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .hint code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 0.88em;
+        color: var(--accent);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      @media (max-width: 720px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .panel-head {
+        padding: 12px 18px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .panel-head h2 {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+      }
+      .panel-head .badge {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+        color: var(--accent);
+      }
+      .panel-body {
+        padding: 14px 18px;
+      }
+
+      /* state list */
+      .state-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+      }
+      .state-row:last-child {
+        border-bottom: none;
+      }
+      .state-row .key {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .state-row .val {
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .state-row .val .c {
+        color: var(--accent);
+      }
+      .state-row .when {
+        font-size: 0.72rem;
+        color: #4a536a;
+      }
+      .state-row button.del {
+        background: transparent;
+        color: var(--warn);
+        border: 1px solid var(--line);
+        padding: 3px 9px;
+        font-size: 0.7rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .state-row button.del:hover {
+        border-color: var(--warn);
+      }
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+        font-size: 0.88rem;
+        padding: 18px 0;
+        text-align: center;
+      }
+
+      /* form */
+      form .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 96px auto;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      form input {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 8px 10px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        color: var(--fg);
+      }
+      form input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      form input::placeholder {
+        color: #4a536a;
+      }
+      form button {
+        background: var(--accent);
+        color: var(--bg);
+        border: none;
+        border-radius: 5px;
+        padding: 8px 14px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        cursor: pointer;
+        box-shadow: 0 0 16px var(--accent-glow);
+      }
+      form button:hover {
+        opacity: 0.92;
+      }
+      .form-help {
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin-top: 8px;
+        line-height: 1.55;
+      }
+
+      /* log */
+      .log {
+        max-height: 280px;
+        overflow-y: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.78rem;
+        line-height: 1.7;
+      }
+      .log .ln {
+        display: grid;
+        grid-template-columns: 80px 70px auto;
+        gap: 10px;
+        padding: 2px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .log .ln:last-child {
+        border-bottom: none;
+      }
+      .log .ts {
+        color: #4a536a;
+      }
+      .log .ev-set {
+        color: var(--good);
+      }
+      .log .ev-delete {
+        color: var(--warn);
+      }
+      .log .ev-hello {
+        color: var(--accent);
+      }
+      .log .who {
+        color: var(--muted);
+      }
+      .log .who.self {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      /* stats */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+      }
+      .stat {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .stat .k {
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .stat .v {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--fg);
+      }
+      .pulse {
+        animation: pulse 0.6s ease;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 var(--accent-glow);
+        }
+        50% {
+          box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+        100% {
+          box-shadow: 0 0 0 0 transparent;
+        }
+      }
+    </style>
+  </head>
+  <body data-color="{{.Color}}">
+    <div class="wrap">
+      <header>
+        <div class="me">
+          <span class="dot"></span>
+          <div>
+            <div class="id">{{.PodID}}</div>
+            <div class="port">listening on :{{.Port}}</div>
+          </div>
+        </div>
+        <div class="peers">
+          {{range .Peers}}
+          <a class="peer-link" data-pc="{{.Color}}" href="http://localhost:{{.Port}}/">
+            <span class="pdot"></span>{{.ID}}
+          </a>
+          {{end}}
+        </div>
+      </header>
+
+      <div class="hint">
+        You're talking to <b>{{.PodID}}</b>. Writes you make here propagate
+        to the other pods over an in-process <code>MemoryTransport</code>.
+        Open the peer links in new tabs to watch state sync live.
+        Try setting the same key from two tabs at once — LWW picks a winner.
+      </div>
+
+      <div class="grid" style="margin-bottom: 18px">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>state</h2>
+            <span class="badge" id="state-count">0 keys</span>
+          </div>
+          <div class="panel-body">
+            <div id="state"><div class="empty">no keys yet — write one below</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>write</h2>
+            <span class="badge">POST /api/set</span>
+          </div>
+          <div class="panel-body">
+            <form id="setForm" autocomplete="off">
+              <div class="row">
+                <input id="f-key" name="key" placeholder="key (e.g., alice)" required />
+                <input id="f-desc" name="desc" placeholder="description" />
+                <input id="f-counter" name="counter" type="number" value="1" />
+                <button type="submit">set</button>
+              </div>
+              <div class="form-help">
+                The value is a <code>{description, counter, updated_at}</code> struct.
+                Set the same key in different tabs to test LWW ordering.
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>events</h2>
+            <span class="badge" id="sse-status">connecting…</span>
+          </div>
+          <div class="panel-body">
+            <div class="log" id="log"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>stats</h2>
+            <span class="badge">GET /api/stats</span>
+          </div>
+          <div class="panel-body">
+            <div class="stats" id="stats"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const podID = {{.PodID | printf "%q"}};
+      const stateEl = document.getElementById('state');
+      const stateCountEl = document.getElementById('state-count');
+      const logEl = document.getElementById('log');
+      const sseStatus = document.getElementById('sse-status');
+      const statsEl = document.getElementById('stats');
+
+      function fmtTime(iso) {
+        try {
+          return new Date(iso).toLocaleTimeString();
+        } catch { return iso; }
+      }
+
+      async function refreshState() {
+        const r = await fetch('/api/state');
+        const data = await r.json();
+        const entries = Object.entries(data.state || {});
+        stateCountEl.textContent = entries.length + ' key' + (entries.length === 1 ? '' : 's');
+        if (entries.length === 0) {
+          stateEl.innerHTML = '<div class="empty">no keys yet — write one below</div>';
+          return;
+        }
+        stateEl.innerHTML = entries
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => `
+            <div class="state-row" data-key="${escapeHTML(k)}">
+              <span class="key">${escapeHTML(k)}</span>
+              <span class="val">${escapeHTML(v.description || '(empty)')} <span class="c">×${v.counter || 0}</span></span>
+              <span class="when">${fmtTime(v.updated_at)}</span>
+              <button class="del" data-del="${escapeHTML(k)}">delete</button>
+            </div>
+          `).join('');
+      }
+
+      async function refreshStats() {
+        const r = await fetch('/api/stats');
+        const s = await r.json();
+        statsEl.innerHTML = [
+          ['keys', s.Keys],
+          ['tombstones', s.Tombstones],
+          ['reads', s.Reads],
+          ['writes_local', s.WritesLocal],
+          ['writes_applied', s.WritesApplied],
+          ['watchers', s.WatchersActive],
+          ['snapshots', s.Snapshots],
+          ['events', s.EventsDispatched],
+        ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v ?? 0}</div></div>`).join('');
+      }
+
+      function escapeHTML(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+      }
+
+      function logLine(kind, key, origin, isSelf) {
+        const now = new Date().toLocaleTimeString();
+        const ln = document.createElement('div');
+        ln.className = 'ln';
+        ln.innerHTML = `
+          <span class="ts">${now}</span>
+          <span class="ev-${kind}">${kind}</span>
+          <span><span class="who ${isSelf ? 'self' : ''}">${escapeHTML(origin)}</span> → ${escapeHTML(key)}</span>
+        `;
+        logEl.prepend(ln);
+        while (logEl.children.length > 80) logEl.removeChild(logEl.lastChild);
+      }
+
+      // ---- Server-Sent Events ----
+      const es = new EventSource('/api/events');
+      es.addEventListener('hello', e => {
+        sseStatus.textContent = 'connected to ' + JSON.parse(e.data);
+        sseStatus.style.color = 'var(--good)';
+      });
+      es.addEventListener('change', e => {
+        const ev = JSON.parse(e.data);
+        const isSelf = ev.origin === podID;
+        logLine(ev.kind, ev.key, ev.origin, isSelf);
+        refreshState();
+        refreshStats();
+        // Briefly pulse the corresponding state row.
+        setTimeout(() => {
+          const row = stateEl.querySelector(`[data-key="${ev.key.replace(/"/g, '\\"')}"]`);
+          if (row) {
+            row.classList.add('pulse');
+            setTimeout(() => row.classList.remove('pulse'), 600);
+          }
+        }, 50);
+      });
+      es.onerror = () => {
+        sseStatus.textContent = 'reconnecting…';
+        sseStatus.style.color = 'var(--warn)';
+      };
+
+      // ---- write form ----
+      document.getElementById('setForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const key = document.getElementById('f-key').value.trim();
+        const desc = document.getElementById('f-desc').value;
+        const counter = parseInt(document.getElementById('f-counter').value, 10) || 0;
+        const r = await fetch('/api/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, value: { description: desc, counter } }),
+        });
+        if (!r.ok) {
+          alert('set failed: ' + await r.text());
+        }
+        // bump counter for the next write so people can spam-test ordering
+        document.getElementById('f-counter').value = counter + 1;
+      });
+
+      // ---- delete buttons (event-delegated) ----
+      stateEl.addEventListener('click', async e => {
+        const btn = e.target.closest('button[data-del]');
+        if (!btn) return;
+        await fetch('/api/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: btn.dataset.del }),
+        });
+      });
+
+      // ---- initial paint + periodic stats refresh ----
+      refreshState();
+      refreshStats();
+      setInterval(refreshStats, 1500);
+    </script>
+  </body>
+</html>

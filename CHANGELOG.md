@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — observability + schema-drift detection
+
+### Added
+
+- **`StrictJSONCodec`** in the main package. Uses `json.DisallowUnknownFields`
+  on decode — schema drift during a rolling deploy surfaces as `OnError`
+  calls instead of silent field-drop. Wire it with
+  `podshare.WithCodec[T](podshare.StrictJSONCodec{})` and pair with
+  `WithErrorHandler` for observability.
+- **`podshare/prom`** subpackage. Wraps `Store.Stats()` as a
+  `prometheus.Collector` with 12 metrics (writes, reads, watchers,
+  snapshots, keys, tombstones, GC). Constructor takes a `func() Stats`
+  so it can also wrap custom Stats sources. Pulls in
+  `github.com/prometheus/client_golang` only when imported.
+
+### Tests
+
+- `TestStrictJSONCodec_*` — accepts matching schema and missing fields,
+  rejects unknown fields, surfaces drift via `OnError` end-to-end.
+- `TestCollectorRegistersAndScrapes` — lint passes, 12 metrics emitted,
+  spot-check expected values for writes/reads/keys/tombstones, label
+  propagation verified.
+
 ## Unreleased — second-review fixes + Go 1.26
 
 ### Toolchain

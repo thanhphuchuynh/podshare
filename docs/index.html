@@ -3,32 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>podshare — type-safe cross-pod data sharing for Go</title>
+    <title>podshare · type-safe cross-pod state for Go</title>
     <meta
       name="description"
-      content="A generic, type-safe Go package for sharing structured data across pods. Pluggable transports: Redis pub/sub or direct P2P TCP."
+      content="A small Go library for sharing a map[string]T across every pod in your fleet. Eventually consistent, type-safe, pluggable transport. Open source."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
-        --bg: #08090d;
-        --panel: #0f1218;
-        --panel-2: #161a23;
-        --line: #1f2531;
-        --fg: #e6e8ec;
-        --muted: #8b94a6;
-        --accent: #6ee7ff;
-        --accent-2: #a78bfa;
-        --warn: #fbbf24;
-        --green: #4ade80;
+        --bg: #06070b;
+        --bg-soft: #0a0c12;
+        --panel: #0e1119;
+        --panel-2: #161a25;
+        --line: #1f2433;
+        --line-soft: #161a25;
+        --fg: #f1f3f7;
+        --fg-dim: #c5cad6;
+        --muted: #7a8398;
+        --teal: #5eead4;
+        --teal-glow: rgba(94, 234, 212, 0.35);
+        --purple: #c084fc;
+        --purple-glow: rgba(192, 132, 252, 0.35);
+        --warn: #fb923c;
+        --good: #4ade80;
       }
       * {
         box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
       }
       html,
       body {
@@ -43,213 +51,347 @@
           system-ui,
           -apple-system,
           sans-serif;
-        line-height: 1.5;
+        font-feature-settings: "cv11", "ss01";
+        line-height: 1.55;
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: radial-gradient(
+          circle at 1px 1px,
+          rgba(255, 255, 255, 0.025) 1px,
+          transparent 0
+        );
+        background-size: 32px 32px;
+        pointer-events: none;
+        z-index: 0;
       }
       a {
-        color: var(--accent);
+        color: var(--teal);
         text-decoration: none;
       }
       a:hover {
         text-decoration: underline;
+        text-underline-offset: 3px;
+        text-decoration-color: rgba(94, 234, 212, 0.5);
       }
       code,
       pre {
         font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-        font-feature-settings: "ss01" on, "ss02" on;
+        font-feature-settings: "ss01" on;
       }
       .wrap {
         max-width: 1100px;
         margin: 0 auto;
-        padding: 0 24px;
+        padding: 0 28px;
+        position: relative;
+        z-index: 1;
       }
+
+      /* nav */
       nav {
         position: sticky;
         top: 0;
-        background: rgba(8, 9, 13, 0.85);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid var(--line);
+        background: rgba(6, 7, 11, 0.78);
+        backdrop-filter: saturate(150%) blur(12px);
+        border-bottom: 1px solid var(--line-soft);
         z-index: 50;
       }
       nav .wrap {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 60px;
+        height: 56px;
       }
       .brand {
         display: flex;
         align-items: center;
         gap: 10px;
         font-weight: 700;
-        font-size: 1.05rem;
+        font-size: 1.02rem;
+        letter-spacing: -0.01em;
       }
-      .brand .dot {
-        width: 10px;
-        height: 10px;
-        background: var(--accent);
+      .brand .logo {
+        width: 22px;
+        height: 22px;
+        position: relative;
+      }
+      .brand .logo::before,
+      .brand .logo::after {
+        content: "";
+        position: absolute;
+        inset: 0;
         border-radius: 50%;
-        box-shadow: 0 0 16px var(--accent);
+      }
+      .brand .logo::before {
+        background: var(--teal);
+        filter: blur(8px);
+        opacity: 0.7;
+      }
+      .brand .logo::after {
+        background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
+      }
+      .brand .v {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 400;
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-left: 4px;
       }
       nav .links {
         display: flex;
-        gap: 22px;
-        font-size: 0.92rem;
-        color: var(--muted);
+        gap: 26px;
+        font-size: 0.88rem;
       }
       nav .links a {
         color: var(--muted);
-        text-decoration: none;
+        font-weight: 500;
       }
       nav .links a:hover {
         color: var(--fg);
+        text-decoration: none;
       }
 
       /* hero */
       .hero {
-        padding: 80px 0 40px;
-        text-align: center;
+        padding: 64px 0 24px;
+        position: relative;
       }
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 60% 50% at 50% 0%,
+          var(--teal-glow),
+          transparent 70%
+        );
+        opacity: 0.25;
+        pointer-events: none;
+      }
+      .hero-content {
+        text-align: center;
+        position: relative;
+        z-index: 1;
+      }
+      .tagline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--teal);
+        background: rgba(94, 234, 212, 0.08);
+        border: 1px solid rgba(94, 234, 212, 0.25);
+        padding: 5px 12px;
+        border-radius: 100px;
+        margin-bottom: 24px;
+      }
+      .tagline .dot {
+        width: 6px;
+        height: 6px;
+        background: var(--teal);
+        border-radius: 50%;
+        box-shadow: 0 0 10px var(--teal);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
       .hero h1 {
-        font-size: clamp(2.4rem, 6vw, 4.4rem);
-        margin: 0 0 14px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        background: linear-gradient(180deg, #fff 0%, #cbd2e0 100%);
+        font-size: clamp(2.2rem, 5.5vw, 4rem);
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        margin: 0 0 20px;
+        background: linear-gradient(180deg, #ffffff 0%, #a5acba 100%);
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
       }
-      .hero .tag {
-        color: var(--muted);
-        font-size: clamp(1rem, 1.6vw, 1.2rem);
-        max-width: 600px;
-        margin: 0 auto 32px;
+      .hero h1 em {
+        font-style: normal;
+        background: linear-gradient(90deg, var(--teal), var(--purple));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
       }
-      .hero .tag b {
+      .hero .lede {
+        color: var(--fg-dim);
+        font-size: clamp(1rem, 1.5vw, 1.18rem);
+        max-width: 640px;
+        margin: 0 auto 28px;
+        line-height: 1.6;
+      }
+      .hero .lede b {
         color: var(--fg);
         font-weight: 600;
       }
+      .hero .lede code {
+        color: var(--teal);
+        background: rgba(94, 234, 212, 0.08);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 0.92em;
+      }
       .cta {
-        display: inline-flex;
+        display: flex;
         gap: 12px;
         flex-wrap: wrap;
         justify-content: center;
+        margin-bottom: 52px;
       }
       .btn {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 10px 18px;
+        padding: 11px 20px;
         border-radius: 8px;
-        font-weight: 500;
-        font-size: 0.95rem;
+        font-weight: 600;
+        font-size: 0.92rem;
         border: 1px solid var(--line);
         background: var(--panel);
         color: var(--fg);
         cursor: pointer;
-        transition:
-          transform 0.06s ease,
-          border-color 0.15s ease,
-          background 0.15s ease;
+        transition: all 0.15s ease;
         text-decoration: none;
+        font-family: inherit;
       }
       .btn:hover {
-        border-color: var(--accent);
-        transform: translateY(-1px);
         text-decoration: none;
+        border-color: var(--teal);
+        transform: translateY(-1px);
       }
       .btn-primary {
-        background: linear-gradient(180deg, #2a3242 0%, #1a2030 100%);
-        border-color: #344057;
+        background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
+        color: var(--bg);
+        border-color: transparent;
+        box-shadow: 0 0 28px var(--teal-glow);
       }
       .btn-primary:hover {
-        border-color: var(--accent);
+        transform: translateY(-1px);
+        box-shadow: 0 0 36px var(--teal-glow);
       }
-      .btn .arrow {
-        opacity: 0.6;
+      .btn code {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.85rem;
       }
 
-      /* mesh viz */
-      .viz {
-        margin: 60px auto;
-        padding: 36px 28px;
+      /* mesh */
+      .mesh-shell {
+        max-width: 940px;
+        margin: 0 auto;
         background:
           radial-gradient(
-            ellipse 60% 60% at 50% 0%,
-            rgba(110, 231, 255, 0.06),
+            ellipse 60% 100% at 50% 50%,
+            rgba(94, 234, 212, 0.04),
             transparent 70%
           ),
           var(--panel);
         border: 1px solid var(--line);
-        border-radius: 16px;
-        max-width: 980px;
+        border-radius: 14px;
+        overflow: hidden;
       }
-      .viz-header {
+      .mesh-bar {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        margin-bottom: 24px;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-      .viz-title {
-        font-size: 0.92rem;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .viz-controls {
-        display: flex;
-        gap: 8px;
-      }
-      .viz-controls button {
+        justify-content: space-between;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line);
         background: var(--panel-2);
-        color: var(--fg);
+      }
+      .mesh-bar .label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.78rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .mesh-bar .label .dots {
+        display: inline-flex;
+        gap: 5px;
+      }
+      .mesh-bar .label .dots span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+      .mesh-bar .label .dots span:nth-child(1) {
+        background: #ef4444;
+      }
+      .mesh-bar .label .dots span:nth-child(2) {
+        background: #facc15;
+      }
+      .mesh-bar .label .dots span:nth-child(3) {
+        background: var(--good);
+      }
+      .mesh-bar .controls {
+        display: flex;
+        gap: 6px;
+      }
+      .mesh-bar button {
+        background: transparent;
+        color: var(--muted);
         border: 1px solid var(--line);
-        padding: 6px 12px;
-        font-size: 0.85rem;
-        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 0.74rem;
+        border-radius: 5px;
         cursor: pointer;
-        font-family: inherit;
+        font-family: "JetBrains Mono", monospace;
+        transition: all 0.12s ease;
       }
-      .viz-controls button:hover {
-        border-color: var(--accent);
+      .mesh-bar button:hover {
+        color: var(--fg);
+        border-color: var(--teal);
       }
-      .viz-controls button.active {
-        border-color: var(--accent);
-        color: var(--accent);
+      .mesh-bar button.active {
+        color: var(--teal);
+        border-color: rgba(94, 234, 212, 0.4);
+        background: rgba(94, 234, 212, 0.08);
       }
 
       .mesh {
         position: relative;
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 20px;
+        gap: 16px;
+        padding: 24px;
         min-height: 220px;
       }
       .pod {
         position: relative;
-        background: var(--panel-2);
+        background: var(--bg-soft);
         border: 1px solid var(--line);
         border-radius: 10px;
-        padding: 14px;
+        padding: 14px 14px 12px;
         cursor: pointer;
-        transition:
-          border-color 0.2s ease,
-          transform 0.12s ease,
-          box-shadow 0.2s ease;
+        transition: all 0.18s ease;
       }
       .pod:hover {
-        border-color: rgba(110, 231, 255, 0.5);
-        transform: translateY(-1px);
+        border-color: rgba(94, 234, 212, 0.4);
+        transform: translateY(-2px);
       }
       .pod.flash {
-        border-color: var(--accent);
+        border-color: var(--teal);
         box-shadow:
-          0 0 0 1px var(--accent),
-          0 0 28px rgba(110, 231, 255, 0.35);
+          0 0 0 1px var(--teal),
+          0 0 24px var(--teal-glow);
       }
       .pod.offline {
         opacity: 0.4;
@@ -263,36 +405,54 @@
       }
       .pod-id {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: var(--accent);
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--teal);
+        letter-spacing: 0.02em;
+      }
+      .pod-status {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.66rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .pod-status::before {
+        content: "●";
+        margin-right: 4px;
+        color: var(--good);
+      }
+      .pod.offline .pod-status::before {
+        color: #ef4444;
       }
       .pod-state {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.78rem;
-        color: var(--muted);
-        min-height: 78px;
+        font-size: 0.74rem;
+        min-height: 84px;
       }
       .pod-state .kv {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         padding: 3px 0;
-        border-bottom: 1px dashed transparent;
-        transition: color 0.2s ease;
+        border-bottom: 1px solid var(--line-soft);
       }
-      .pod-state .kv.fresh {
-        color: var(--green);
+      .pod-state .kv:last-child {
+        border-bottom: none;
       }
       .pod-state .kv .k {
         color: var(--muted);
       }
       .pod-state .kv .v {
-        color: var(--fg);
+        color: var(--teal);
+        font-weight: 500;
       }
       .pod-state.empty {
         color: var(--muted);
         font-style: italic;
-        padding-top: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         text-align: center;
       }
       .pod-actions {
@@ -305,128 +465,195 @@
         background: transparent;
         color: var(--muted);
         border: 1px solid var(--line);
-        padding: 4px 6px;
-        font-size: 0.72rem;
+        padding: 5px 8px;
+        font-size: 0.68rem;
         border-radius: 4px;
         cursor: pointer;
-        font-family: inherit;
+        font-family: "JetBrains Mono", monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        transition: all 0.12s ease;
       }
       .pod-actions button:hover {
         color: var(--fg);
-        border-color: var(--accent);
+        border-color: var(--teal);
       }
 
       .packet {
         position: absolute;
-        background: var(--accent);
+        background: var(--teal);
         color: var(--bg);
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.7rem;
-        font-weight: 600;
-        padding: 4px 8px;
-        border-radius: 4px;
+        font-size: 0.66rem;
+        font-weight: 700;
+        padding: 4px 9px;
+        border-radius: 100px;
         pointer-events: none;
-        box-shadow: 0 0 18px rgba(110, 231, 255, 0.6);
+        box-shadow: 0 0 24px var(--teal-glow);
         z-index: 5;
         white-space: nowrap;
+        letter-spacing: 0.02em;
+      }
+      .packet.del {
+        background: var(--warn);
+        box-shadow: 0 0 24px rgba(251, 146, 60, 0.5);
+      }
+      .packet.snap {
+        background: var(--purple);
+        box-shadow: 0 0 24px var(--purple-glow);
       }
 
-      .viz-log {
-        margin-top: 22px;
+      .mesh-log {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.78rem;
+        font-size: 0.74rem;
         color: var(--muted);
         background: var(--bg);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 10px 14px;
-        max-height: 140px;
+        border-top: 1px solid var(--line);
+        padding: 10px 20px;
+        max-height: 116px;
         overflow-y: auto;
       }
-      .viz-log .line {
+      .mesh-log .line {
         padding: 1px 0;
+        display: flex;
+        gap: 10px;
       }
-      .viz-log .line .ts {
+      .mesh-log .ts {
         color: #4a536a;
-        margin-right: 8px;
+        flex-shrink: 0;
       }
-      .viz-log .line .ev-set {
-        color: var(--green);
+      .mesh-log .ev-set {
+        color: var(--good);
       }
-      .viz-log .line .ev-delete {
+      .mesh-log .ev-del {
         color: var(--warn);
       }
-      .viz-log .line .ev-snap {
-        color: var(--accent-2);
+      .mesh-log .ev-snap {
+        color: var(--purple);
       }
 
       /* sections */
       section {
-        padding: 60px 0;
+        padding: 72px 0;
+      }
+      .eyebrow {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+        color: var(--teal);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        margin-bottom: 14px;
       }
       h2 {
-        font-size: clamp(1.5rem, 2.4vw, 1.95rem);
-        margin: 0 0 8px;
-        letter-spacing: -0.01em;
+        font-size: clamp(1.6rem, 2.6vw, 2.1rem);
+        font-weight: 700;
+        margin: 0 0 14px;
+        letter-spacing: -0.018em;
+        line-height: 1.15;
       }
-      h2 + .sub {
+      .sub {
         color: var(--muted);
         margin: 0 0 36px;
         font-size: 1rem;
+        max-width: 600px;
       }
 
-      /* code */
-      .code-tabs {
+      /* pattern section: split layout */
+      .pattern-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        align-items: start;
+      }
+      .pattern-grid .diagram {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 22px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.78rem;
+        color: var(--fg-dim);
+        white-space: pre;
+        overflow-x: auto;
+        line-height: 1.7;
+      }
+      .pattern-grid .diagram .h {
+        color: var(--teal);
+      }
+      .pattern-grid .diagram .h2 {
+        color: var(--purple);
+      }
+      .pattern-grid p {
+        color: var(--fg-dim);
+        font-size: 0.96rem;
+        line-height: 1.7;
+      }
+      .pattern-grid p + p {
+        margin-top: 12px;
+      }
+      .pattern-grid code {
+        color: var(--teal);
+        background: rgba(94, 234, 212, 0.06);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 0.86em;
+      }
+
+      /* code window */
+      .code-window {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 10px;
         overflow: hidden;
       }
-      .tabs {
+      .code-tabs {
         display: flex;
         border-bottom: 1px solid var(--line);
         background: var(--panel-2);
+        overflow-x: auto;
       }
-      .tab {
-        padding: 12px 18px;
-        font-size: 0.85rem;
+      .code-tab {
+        padding: 11px 18px;
+        font-size: 0.82rem;
         color: var(--muted);
         cursor: pointer;
         border-bottom: 2px solid transparent;
         user-select: none;
+        white-space: nowrap;
+        font-family: "JetBrains Mono", monospace;
       }
-      .tab.active {
+      .code-tab.active {
         color: var(--fg);
-        border-bottom-color: var(--accent);
+        border-bottom-color: var(--teal);
       }
-      .tab:hover {
-        color: var(--fg);
+      .code-tab:hover:not(.active) {
+        color: var(--fg-dim);
       }
       .code-body {
-        padding: 18px 22px;
+        padding: 20px 24px;
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.6;
+        font-size: 0.84rem;
+        line-height: 1.65;
         overflow-x: auto;
       }
       .code-body pre {
         margin: 0;
       }
-      .tok-k {
-        color: #a78bfa;
+      .tk-k {
+        color: var(--purple);
       }
-      .tok-s {
+      .tk-s {
         color: #facc15;
       }
-      .tok-c {
+      .tk-c {
         color: #4a536a;
         font-style: italic;
       }
-      .tok-n {
-        color: #6ee7ff;
+      .tk-n {
+        color: var(--teal);
       }
-      .tok-t {
-        color: #4ade80;
+      .tk-t {
+        color: var(--good);
       }
       .code-block {
         display: none;
@@ -438,47 +665,65 @@
       /* features */
       .features {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 14px;
       }
       .feature {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 10px;
-        padding: 20px;
+        padding: 22px 20px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.18s ease;
       }
-      .feature .icon {
-        width: 28px;
-        height: 28px;
-        background: rgba(110, 231, 255, 0.1);
-        border: 1px solid rgba(110, 231, 255, 0.3);
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+      .feature:hover {
+        border-color: rgba(94, 234, 212, 0.4);
+      }
+      .feature::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 80% 30% at 50% 0%,
+          rgba(94, 234, 212, 0.05),
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+      .feature .ic {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--teal);
         margin-bottom: 14px;
-        font-size: 0.95rem;
-        color: var(--accent);
+        opacity: 0.85;
       }
       .feature h3 {
         font-size: 1rem;
         margin: 0 0 6px;
+        font-weight: 600;
       }
       .feature p {
         font-size: 0.88rem;
         color: var(--muted);
         margin: 0;
-        line-height: 1.55;
+        line-height: 1.6;
       }
       .feature code {
-        font-size: 0.8rem;
-        background: var(--panel-2);
+        font-size: 0.8em;
+        color: var(--teal);
+        background: rgba(94, 234, 212, 0.06);
         padding: 1px 5px;
         border-radius: 3px;
-        color: var(--accent);
       }
 
       /* comparison */
+      .compare {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 22px;
+      }
       .cmp {
         width: 100%;
         border-collapse: collapse;
@@ -490,7 +735,7 @@
       }
       .cmp th,
       .cmp td {
-        padding: 12px 14px;
+        padding: 13px 16px;
         text-align: left;
         border-bottom: 1px solid var(--line);
       }
@@ -498,28 +743,32 @@
         background: var(--panel-2);
         color: var(--muted);
         font-weight: 500;
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.08em;
       }
       .cmp tr:last-child td {
         border-bottom: none;
       }
-      .cmp .row-podshare {
-        background: rgba(110, 231, 255, 0.04);
+      .cmp .row-us {
+        background: linear-gradient(
+          90deg,
+          rgba(94, 234, 212, 0.08),
+          rgba(192, 132, 252, 0.04)
+        );
       }
-      .cmp .row-podshare td:first-child {
-        color: var(--accent);
+      .cmp .row-us td:first-child {
+        color: var(--teal);
         font-weight: 600;
       }
       .cmp .good {
-        color: var(--green);
+        color: var(--good);
       }
       .cmp .mid {
         color: var(--warn);
       }
       .cmp .bad {
-        color: #94a3b8;
+        color: var(--muted);
       }
 
       /* use cases */
@@ -532,60 +781,130 @@
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 10px;
-        padding: 20px;
-        position: relative;
+        padding: 22px;
       }
       .case h3 {
-        font-size: 1.02rem;
-        margin: 0 0 6px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        font-size: 1rem;
+        margin: 0 0 4px;
+        font-weight: 600;
       }
-      .case .badge {
+      .case .label {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.7rem;
-        color: var(--accent);
-        background: rgba(110, 231, 255, 0.08);
-        padding: 2px 6px;
-        border-radius: 3px;
+        font-size: 0.68rem;
+        color: var(--teal);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
       }
       .case p {
         margin: 0 0 10px;
         color: var(--muted);
         font-size: 0.88rem;
+        line-height: 1.6;
       }
       .case .ex {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.78rem;
-        color: var(--accent);
+        font-size: 0.76rem;
+        color: var(--purple);
+      }
+
+      /* not for */
+      .notfor {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 28px 32px;
+      }
+      .notfor h3 {
+        margin: 0 0 16px;
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      .notfor ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 12px;
+      }
+      .notfor li {
+        color: var(--muted);
+        font-size: 0.9rem;
+        padding-left: 18px;
+        position: relative;
+        line-height: 1.55;
+      }
+      .notfor li::before {
+        content: "✕";
+        position: absolute;
+        left: 0;
+        color: #ef4444;
+        font-weight: 700;
+      }
+      .notfor li b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+
+      /* final CTA */
+      .end {
+        text-align: center;
+        padding: 80px 0 60px;
+      }
+      .end h2 {
+        font-size: clamp(1.8rem, 3vw, 2.3rem);
+      }
+      .end pre {
+        display: inline-block;
+        text-align: left;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 20px;
+        margin: 18px auto 22px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        color: var(--fg-dim);
+      }
+      .end pre .p {
+        color: var(--muted);
+      }
+      .end pre .c {
+        color: var(--teal);
       }
 
       /* footer */
       footer {
-        padding: 50px 0 70px;
-        border-top: 1px solid var(--line);
+        padding: 32px 0 50px;
+        border-top: 1px solid var(--line-soft);
         color: var(--muted);
-        font-size: 0.85rem;
+        font-size: 0.84rem;
       }
       footer .wrap {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        flex-wrap: wrap;
         gap: 16px;
+        flex-wrap: wrap;
       }
       footer .meta {
         display: flex;
         gap: 22px;
       }
 
-      @media (max-width: 720px) {
+      @media (max-width: 800px) {
         .mesh {
+          grid-template-columns: 1fr;
+        }
+        .pattern-grid {
           grid-template-columns: 1fr;
         }
         nav .links {
           gap: 16px;
+        }
+        nav .links a:not(.ext) {
+          display: none;
         }
       }
     </style>
@@ -594,20 +913,22 @@
     <nav>
       <div class="wrap">
         <div class="brand">
-          <span class="dot"></span>
+          <span class="logo"></span>
           podshare
+          <span class="v">v0.x</span>
         </div>
         <div class="links">
-          <a href="#mesh">demo</a>
+          <a href="#pattern">pattern</a>
           <a href="#code">code</a>
           <a href="#compare">compare</a>
-          <a href="https://github.com/thanhphuchuynh/podshare" target="_blank"
-            >github</a
+          <a class="ext" href="https://github.com/thanhphuchuynh/podshare" target="_blank"
+            >github →</a
           >
           <a
+            class="ext"
             href="https://pkg.go.dev/github.com/thanhphuchuynh/podshare"
             target="_blank"
-            >godoc</a
+            >docs →</a
           >
         </div>
       </div>
@@ -615,46 +936,37 @@
 
     <section class="hero">
       <div class="wrap">
-        <h1>shared state across pods,<br />without the cluster</h1>
-        <p class="tag">
-          <b>podshare</b> is a generic, type-safe Go library. Every pod holds
-          the same <code>map[string]T</code>; writes broadcast over a pluggable
-          transport. Reads are local — zero network hop. <br />Pick your wire:
-          Redis pub/sub, P2P TCP, or roll your own.
-        </p>
-        <div class="cta">
-          <a
-            class="btn btn-primary"
-            href="https://github.com/thanhphuchuynh/podshare"
-            target="_blank"
-          >
-            <span>★</span> View on GitHub <span class="arrow">→</span>
-          </a>
-          <a
-            class="btn"
-            href="https://pkg.go.dev/github.com/thanhphuchuynh/podshare"
-            target="_blank"
-          >
-            pkg.go.dev <span class="arrow">→</span>
-          </a>
-          <a class="btn" href="#mesh">try the demo ↓</a>
+        <div class="hero-content">
+          <span class="tagline"><span class="dot"></span> open source · go 1.26</span>
+          <h1>
+            shared state across pods.<br />
+            <em>without the cluster.</em>
+          </h1>
+          <p class="lede">
+            <b>podshare</b> is a small Go library. Every pod holds the same
+            <code>map[string]T</code>; writes broadcast over a pluggable transport.
+            Reads are local — about <b>17 nanoseconds</b>. Pick the wire: Redis pub/sub,
+            P2P TCP, or roll your own.
+          </p>
+          <div class="cta">
+            <a
+              class="btn btn-primary"
+              href="https://github.com/thanhphuchuynh/podshare"
+              target="_blank"
+            >
+              ★ Star on GitHub →
+            </a>
+            <a class="btn" href="#code"><code>go get</code> the lib →</a>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <section id="mesh">
-      <div class="wrap">
-        <div class="viz">
-          <div class="viz-header">
-            <div>
-              <div class="viz-title">live demo · 3 pods · MemoryTransport</div>
-              <div
-                style="color: var(--muted); font-size: 0.85rem; margin-top: 6px"
-              >
-                click any pod to write a value · watch it propagate to peers
-              </div>
+        <div class="mesh-shell">
+          <div class="mesh-bar">
+            <div class="label">
+              <span class="dots"><span></span><span></span><span></span></span>
+              live · 3 pods · MemoryTransport
             </div>
-            <div class="viz-controls">
+            <div class="controls">
               <button id="auto-btn" class="active">▶ auto</button>
               <button id="reset-btn">reset</button>
             </div>
@@ -664,6 +976,7 @@
             <div class="pod" data-pod="0">
               <div class="pod-header">
                 <div class="pod-id">pod-1</div>
+                <div class="pod-status">online</div>
               </div>
               <div class="pod-state empty">empty</div>
               <div class="pod-actions">
@@ -674,6 +987,7 @@
             <div class="pod" data-pod="1">
               <div class="pod-header">
                 <div class="pod-id">pod-2</div>
+                <div class="pod-status">online</div>
               </div>
               <div class="pod-state empty">empty</div>
               <div class="pod-actions">
@@ -684,6 +998,7 @@
             <div class="pod" data-pod="2">
               <div class="pod-header">
                 <div class="pod-id">pod-3</div>
+                <div class="pod-status">online</div>
               </div>
               <div class="pod-state empty">empty</div>
               <div class="pod-actions">
@@ -693,89 +1008,133 @@
             </div>
           </div>
 
-          <div class="viz-log" id="log"></div>
+          <div class="mesh-log" id="log"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pattern">
+      <div class="wrap">
+        <div class="eyebrow">the pattern</div>
+        <h2>replicate the route, not the resource</h2>
+        <p class="sub">
+          You can't ship a <code>*websocket.Conn</code> between pods. You can ship
+          two bytes of "who owns it." That's the whole idea.
+        </p>
+        <div class="pattern-grid">
+          <div class="diagram"><span class="h">pod-3</span>                     <span class="h2">pub/sub</span>                 <span class="h">pod-1</span>
+  │                              │                          │
+  │   call{id, "ws:alice",       │                          │
+  │     "Send", "hello"}        ─┼─►                        │
+  │                              │   handlers["ws:alice"]   │
+  │                              │       ["Send"](args)     │
+  │                              │            ↓             │
+  │                              │       conn.Write(...)    │
+  │                              │                          │
+  │◄── reply{id, nil/err} ──────┼──                         │
+</div>
+          <div>
+            <p>
+              Every pod holds an identical <code>map[string]Route</code>. When
+              a user connects to pod-1, pod-1 publishes
+              <code>"ws:alice" → "pod-1"</code>; every other pod sees the claim
+              in <b>under 100 milliseconds</b>.
+            </p>
+            <p>
+              When any pod wants to push to alice, it looks up the route locally
+              (~17ns), publishes a small call envelope to the owning pod's
+              inbox, and awaits the reply on its own inbox.
+            </p>
+            <p>
+              The connection itself never moves. The route — a tiny string keyed
+              by user ID — is the only thing that crosses the network.
+            </p>
+          </div>
         </div>
       </div>
     </section>
 
     <section id="code">
       <div class="wrap">
-        <h2>three lines to share state</h2>
+        <div class="eyebrow">three lines</div>
+        <h2>type-safe over the wire</h2>
         <p class="sub">
-          Generic over <code>T</code>, type-safe end-to-end, no codegen.
+          Generic over <code>T</code>. JSON by default; swap with
+          <code>WithCodec</code> for msgpack, protobuf, anything.
         </p>
 
-        <div class="code-tabs">
-          <div class="tabs" id="tabs">
-            <div class="tab active" data-tab="basic">basic</div>
-            <div class="tab" data-tab="redis">redis</div>
-            <div class="tab" data-tab="watch">watch</div>
-            <div class="tab" data-tab="callreply">callreply (rpc)</div>
+        <div class="code-window">
+          <div class="code-tabs" id="tabs">
+            <div class="code-tab active" data-tab="basic">⌘ basic</div>
+            <div class="code-tab" data-tab="redis">⌘ redis</div>
+            <div class="code-tab" data-tab="watch">⌘ watch</div>
+            <div class="code-tab" data-tab="callreply">⌘ callreply (rpc)</div>
           </div>
 
           <div class="code-body">
             <div class="code-block active" data-block="basic">
-              <pre><span class="tok-k">type</span> <span class="tok-t">Config</span> <span class="tok-k">struct</span> {
-    RateLimit    <span class="tok-t">int</span>             <span class="tok-s">`json:"rate_limit"`</span>
-    FeatureFlags <span class="tok-k">map</span>[<span class="tok-t">string</span>]<span class="tok-t">bool</span> <span class="tok-s">`json:"feature_flags"`</span>
+              <pre><span class="tk-k">type</span> <span class="tk-t">Config</span> <span class="tk-k">struct</span> {
+    RateLimit    <span class="tk-t">int</span>             <span class="tk-s">`json:"rate_limit"`</span>
+    FeatureFlags <span class="tk-k">map</span>[<span class="tk-t">string</span>]<span class="tk-t">bool</span> <span class="tk-s">`json:"feature_flags"`</span>
 }
 
-tr := transport.<span class="tok-n">NewMemoryTransport</span>()
-<span class="tok-k">defer</span> tr.<span class="tok-n">Close</span>()
+tr := transport.<span class="tk-n">NewMemoryTransport</span>()
+<span class="tk-k">defer</span> tr.<span class="tk-n">Close</span>()
 
-store, _ := podshare.<span class="tok-n">New</span>[<span class="tok-t">Config</span>](ctx, <span class="tok-s">"app-config"</span>, tr)
-<span class="tok-k">defer</span> store.<span class="tok-n">Close</span>()
+store, _ := podshare.<span class="tk-n">New</span>[<span class="tk-t">Config</span>](ctx, <span class="tk-s">"app-config"</span>, tr)
+<span class="tk-k">defer</span> store.<span class="tk-n">Close</span>()
 
-store.<span class="tok-n">Set</span>(ctx, <span class="tok-s">"global"</span>, Config{RateLimit: 1000})
-cfg, _ := store.<span class="tok-n">Get</span>(<span class="tok-s">"global"</span>)  <span class="tok-c">// local, ~17ns</span></pre>
+store.<span class="tk-n">Set</span>(ctx, <span class="tk-s">"global"</span>, Config{RateLimit: 1000})
+cfg, _ := store.<span class="tk-n">Get</span>(<span class="tk-s">"global"</span>)  <span class="tk-c">// ~17ns, local</span></pre>
             </div>
 
             <div class="code-block" data-block="redis">
-              <pre><span class="tok-c">// Two pods on the same Redis converge automatically.</span>
-tr, _ := transport.<span class="tok-n">NewRedisTransport</span>(transport.RedisOptions{
-    Addr: <span class="tok-s">"localhost:6379"</span>,
+              <pre><span class="tk-c">// Two pods on the same Redis converge automatically.</span>
+tr, _ := transport.<span class="tk-n">NewRedisTransport</span>(transport.RedisOptions{
+    Addr: <span class="tk-s">"localhost:6379"</span>,
 })
-<span class="tok-k">defer</span> tr.<span class="tok-n">Close</span>()
+<span class="tk-k">defer</span> tr.<span class="tk-n">Close</span>()
 
-store, _ := podshare.<span class="tok-n">New</span>[<span class="tok-t">Flag</span>](ctx, <span class="tok-s">"feature-flags"</span>, tr,
-    podshare.<span class="tok-n">WithNodeID</span>[<span class="tok-t">Flag</span>](<span class="tok-s">"pod-1"</span>),
-    podshare.<span class="tok-n">WithErrorHandler</span>[<span class="tok-t">Flag</span>](<span class="tok-k">func</span>(e <span class="tok-t">error</span>) {
-        slog.<span class="tok-n">Error</span>(<span class="tok-s">"podshare"</span>, <span class="tok-s">"err"</span>, e)
+store, _ := podshare.<span class="tk-n">New</span>[<span class="tk-t">Flag</span>](ctx, <span class="tk-s">"feature-flags"</span>, tr,
+    podshare.<span class="tk-n">WithNodeID</span>[<span class="tk-t">Flag</span>](<span class="tk-s">"pod-1"</span>),
+    podshare.<span class="tk-n">WithErrorHandler</span>[<span class="tk-t">Flag</span>](<span class="tk-k">func</span>(e <span class="tk-t">error</span>) {
+        slog.<span class="tk-n">Error</span>(<span class="tk-s">"podshare"</span>, <span class="tk-s">"err"</span>, e)
     }),
 )
-<span class="tok-k">defer</span> store.<span class="tok-n">Close</span>()
+<span class="tk-k">defer</span> store.<span class="tk-n">Close</span>()
 
-<span class="tok-c">// After a Redis failover, recover missed events:</span>
-store.<span class="tok-n">Refresh</span>(ctx)</pre>
+<span class="tk-c">// After a Redis failover, recover missed events:</span>
+store.<span class="tk-n">Refresh</span>(ctx)</pre>
             </div>
 
             <div class="code-block" data-block="watch">
-              <pre><span class="tok-c">// Live propagation to consumers — non-blocking dispatch.</span>
-<span class="tok-k">for</span> ev := <span class="tok-k">range</span> store.<span class="tok-n">Watch</span>(ctx, podshare.<span class="tok-n">WatchPrefix</span>(<span class="tok-s">"ws:"</span>)) {
-    <span class="tok-k">switch</span> ev.Kind {
-    <span class="tok-k">case</span> podshare.EventSet:
-        cache.<span class="tok-n">Store</span>(ev.Key, &amp;ev.Value)
-    <span class="tok-k">case</span> podshare.EventDelete:
-        cache.<span class="tok-n">Delete</span>(ev.Key)
+              <pre><span class="tk-c">// Live propagation — non-blocking dispatch.</span>
+<span class="tk-c">// WatchPrefix filters server-side; misses don't consume buffer.</span>
+<span class="tk-k">for</span> ev := <span class="tk-k">range</span> store.<span class="tk-n">Watch</span>(ctx, podshare.<span class="tk-n">WatchPrefix</span>(<span class="tk-s">"ws:"</span>)) {
+    <span class="tk-k">switch</span> ev.Kind {
+    <span class="tk-k">case</span> podshare.EventSet:
+        cache.<span class="tk-n">Store</span>(ev.Key, &amp;ev.Value)
+    <span class="tk-k">case</span> podshare.EventDelete:
+        cache.<span class="tk-n">Delete</span>(ev.Key)
     }
 }
-<span class="tok-c">// Channel closes when ctx cancels or the watcher falls behind.</span>
-<span class="tok-c">// Treat closure as "re-subscribe + Refresh".</span></pre>
+<span class="tk-c">// Channel closes on ctx cancel OR slow-consumer drop.</span>
+<span class="tk-c">// Closure = "re-Watch + Refresh".</span></pre>
             </div>
 
             <div class="code-block" data-block="callreply">
-              <pre><span class="tok-c">// Call a method on whichever pod owns "ws:alice" — even if</span>
-<span class="tok-c">// the websocket conn lives on a different pod than us.</span>
-ep, _ := callreply.<span class="tok-n">New</span>(tr, callreply.Options{SelfID: <span class="tok-s">"pod-B"</span>})
-<span class="tok-k">defer</span> ep.<span class="tok-n">Close</span>()
+              <pre><span class="tk-c">// Call a method on whichever pod owns "ws:alice" —</span>
+<span class="tk-c">// even if her WebSocket lives somewhere else.</span>
+ep, _ := callreply.<span class="tk-n">New</span>(tr, callreply.Options{SelfID: <span class="tk-s">"pod-B"</span>})
+<span class="tk-k">defer</span> ep.<span class="tk-n">Close</span>()
 
-<span class="tok-c">// On the pod that owns alice's WS:</span>
-ep.<span class="tok-n">Register</span>(<span class="tok-s">"ws:alice"</span>, <span class="tok-s">"Send"</span>, <span class="tok-k">func</span>(ctx context.<span class="tok-t">Context</span>, args []<span class="tok-t">byte</span>) ([]<span class="tok-t">byte</span>, <span class="tok-t">error</span>) {
-    <span class="tok-k">return</span> <span class="tok-k">nil</span>, conn.<span class="tok-n">WriteMessage</span>(websocket.TextMessage, args)
+<span class="tk-c">// On the pod that owns alice's WS:</span>
+ep.<span class="tk-n">Register</span>(<span class="tk-s">"ws:alice"</span>, <span class="tk-s">"Send"</span>, <span class="tk-k">func</span>(ctx context.<span class="tk-t">Context</span>, args []<span class="tk-t">byte</span>) ([]<span class="tk-t">byte</span>, <span class="tk-t">error</span>) {
+    <span class="tk-k">return</span> <span class="tk-k">nil</span>, conn.<span class="tk-n">WriteMessage</span>(websocket.TextMessage, args)
 })
 
-<span class="tok-c">// From any other pod:</span>
-ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <span class="tok-s">"Send"</span>, []<span class="tok-t">byte</span>(<span class="tok-s">"hello, alice"</span>))</pre>
+<span class="tk-c">// From any other pod:</span>
+ep.<span class="tk-n">Call</span>(ctx, <span class="tk-s">"ws:alice"</span>, <span class="tk-s">"Send"</span>, []<span class="tk-t">byte</span>(<span class="tk-s">"hello"</span>))</pre>
             </div>
           </div>
         </div>
@@ -784,52 +1143,54 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
 
     <section>
       <div class="wrap">
-        <h2>what's in the box</h2>
-        <p class="sub">No leaky abstractions. Every option is documented.</p>
+        <div class="eyebrow">what's in the box</div>
+        <h2>small, sharp, complete</h2>
+        <p class="sub">
+          No leaky abstractions, no hidden allocations on hot paths, every option in the godoc.
+        </p>
         <div class="features">
           <div class="feature">
-            <div class="icon">⟨T⟩</div>
-            <h3>Generic, type-safe</h3>
+            <div class="ic">&lt;T&gt;</div>
+            <h3>Generic and type-safe</h3>
             <p>
-              <code>Store[T]</code> uses Go generics. No
-              <code>any</code> casts, no codegen.
+              <code>Store[T]</code> uses Go generics — no <code>any</code> casts,
+              no codegen, no reflection on the hot path.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⇄</div>
+            <div class="ic">[tx]</div>
             <h3>Pluggable transports</h3>
             <p>
-              Memory (tests), Redis pub/sub (boring prod), P2P TCP (no deps).
-              Implement the
-              <code>Transport</code> interface for anything else.
+              Memory for tests, Redis pub/sub for prod, P2P TCP for no-deps.
+              Implement <code>Transport</code> for anything else.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⏱</div>
+            <div class="ic">↻</div>
             <h3>LWW + Seq tiebreaker</h3>
             <p>
-              Last-write-wins by <code>(time, origin, seq)</code> — same-instant
-              writes from the same node are ordered deterministically.
+              Conflicts ordered by <code>(time, origin, seq)</code> — same-instant
+              same-node writes are deterministically resolved.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⌥</div>
-            <h3>Watch with filtering</h3>
+            <div class="ic">⌥</div>
+            <h3>Filtered watches</h3>
             <p>
-              <code>WatchKey</code> / <code>WatchPrefix</code> apply
-              server-side; misses don't consume buffer.
+              <code>WatchKey</code> / <code>WatchPrefix</code> apply server-side.
+              Misses skip dispatch entirely.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⤓</div>
+            <div class="ic">⇣</div>
             <h3>Snapshot catch-up</h3>
             <p>
-              New pods hydrate from a persisted snapshot. Reconnects recover
-              via <code>Refresh</code>.
+              New pods hydrate from a peer snapshot. Reconnects recover with
+              <code>Refresh(ctx)</code>.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">∪</div>
+            <div class="ic">⤬</div>
             <h3>CRDT seam</h3>
             <p>
               <code>WithMerger</code> for a true commutative join — G-Sets,
@@ -837,27 +1198,27 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⚑</div>
+            <div class="ic">␡</div>
             <h3>Tombstones with TTL</h3>
             <p>
-              Deletes are kept long enough that late writes can't resurrect them;
-              compacted on a periodic tick.
+              Deletes retained long enough that late writes can't resurrect
+              them. Periodic compaction tick.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">⊕</div>
+            <div class="ic">⊞</div>
             <h3>callreply RPC</h3>
             <p>
-              Forward calls to whichever pod owns a target. Built on the same
-              transport you already configured.
+              Forward calls to whichever pod owns a target. Self-call
+              short-circuits to in-process.
             </p>
           </div>
           <div class="feature">
-            <div class="icon">∿</div>
+            <div class="ic">∿</div>
             <h3>Observable</h3>
             <p>
-              <code>Stats()</code> for counters, <code>WithLogger</code> for
-              slog, <code>OnError</code> for everything else.
+              <code>Stats()</code> counters, <code>WithLogger</code> for slog,
+              <code>OnError</code> for everything else.
             </p>
           </div>
         </div>
@@ -866,8 +1227,12 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
 
     <section id="compare">
       <div class="wrap">
-        <h2>compare</h2>
-        <p class="sub">Pick the smallest tool that solves the problem.</p>
+        <div class="eyebrow">honest comparison</div>
+        <h2>pick the smallest tool that solves the problem</h2>
+        <p class="sub">
+          podshare is intentionally narrow. Here's where it fits — and where
+          it doesn't.
+        </p>
         <table class="cmp">
           <thead>
             <tr>
@@ -879,7 +1244,7 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
             </tr>
           </thead>
           <tbody>
-            <tr class="row-podshare">
+            <tr class="row-us">
               <td>podshare</td>
               <td>full replication, LWW</td>
               <td class="mid">eventual</td>
@@ -912,7 +1277,7 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
               <td>gossip primitive</td>
               <td class="mid">eventual</td>
               <td class="good">yes (lib)</td>
-              <td>cluster membership signal</td>
+              <td>cluster membership</td>
             </tr>
             <tr>
               <td>groupcache</td>
@@ -928,97 +1293,126 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
 
     <section>
       <div class="wrap">
-        <h2>where it shines</h2>
-        <p class="sub">Built for small-N, hot, mutable state.</p>
+        <div class="eyebrow">where it shines</div>
+        <h2>built for small-N, hot, mutable state</h2>
+        <p class="sub">
+          Six real patterns the library handles in roughly the same shape.
+        </p>
         <div class="cases">
           <div class="case">
-            <h3>feature flags <span class="badge">live rollout</span></h3>
+            <div class="label">live rollout</div>
+            <h3>feature flags</h3>
             <p>
-              Operator pod sets a flag; every worker pod sees it via
-              <code>Watch</code> within ms. Read with
-              <code>atomic.Pointer</code> for lock-free hot path.
+              Operator pod sets a flag; every worker sees it via
+              <code>Watch</code> within ms. Lock-free hot path via
+              <code>atomic.Pointer</code>.
             </p>
             <div class="ex">examples/feature-flags</div>
           </div>
           <div class="case">
-            <h3>chat history <span class="badge">hot cache</span></h3>
+            <div class="label">hot cache</div>
+            <h3>chat history</h3>
             <p>
-              Recent conversations replicated across all chat-server pods.
-              Any pod can answer a follow-up turn without touching the DB.
+              Recent conversations replicated across all chat-server pods. Any
+              pod answers a follow-up turn — no DB hit.
             </p>
             <div class="ex">examples/chat-cache</div>
           </div>
           <div class="case">
-            <h3>websocket routing <span class="badge">via callreply</span></h3>
+            <div class="label">via callreply</div>
+            <h3>websocket routing</h3>
             <p>
-              Push a message to a user from any pod; routing table forwards
-              the call to whichever pod actually holds the WS connection.
+              Push a message to a user from any pod; the routing table forwards
+              to whichever pod holds the WS connection.
             </p>
             <div class="ex">examples/ws-routing</div>
           </div>
           <div class="case">
-            <h3>presence / online users <span class="badge">small map</span></h3>
+            <div class="label">small map</div>
+            <h3>presence / online users</h3>
             <p>
-              Replicate a tiny "who's online" registry across the fleet.
-              Local <code>Get</code> is ~17 nanoseconds.
+              Replicate a tiny "who's online" registry across the fleet. Local
+              <code>Get</code> is ~17 nanoseconds.
             </p>
             <div class="ex">examples/p2p</div>
           </div>
           <div class="case">
-            <h3>fleet kill-switches <span class="badge">ops</span></h3>
+            <div class="label">ops</div>
+            <h3>fleet kill-switches</h3>
             <p>
               One pod trips a circuit-breaker flag; every other pod backs off
-              immediately. Configure via the same store you already trust.
+              within milliseconds. Same store as your config.
             </p>
-            <div class="ex">your own pattern</div>
+            <div class="ex">your pattern</div>
           </div>
           <div class="case">
-            <h3>routing tables <span class="badge">sharding hints</span></h3>
+            <div class="label">routing</div>
+            <h3>sharding hints</h3>
             <p>
               "user X lives on pod-3" — broadcast a small map of routing
               decisions for sticky-session-style affinity.
             </p>
-            <div class="ex">your own pattern</div>
+            <div class="ex">your pattern</div>
           </div>
         </div>
       </div>
     </section>
 
     <section>
-      <div class="wrap" style="max-width: 720px; text-align: center">
-        <h2>not a fit for everything</h2>
-        <p class="sub" style="margin-bottom: 26px">
-          podshare is intentionally small. Reach for something else if you need:
-        </p>
-        <ul style="text-align: left; color: var(--muted); line-height: 1.9">
-          <li>
-            <b style="color: var(--fg)">Durable source of truth</b> — no
-            durability guarantee. Use Postgres.
-          </li>
-          <li>
-            <b style="color: var(--fg)">Large datasets</b> — every pod holds the
-            full map. Use sharded storage.
-          </li>
-          <li>
-            <b style="color: var(--fg)">Strong consistency</b> — LWW only. Use
-            etcd or a real Raft library.
-          </li>
-          <li>
-            <b style="color: var(--fg)">Cross-region replication</b> —
-            sub-millisecond intra-cluster fan-out, not WAN.
-          </li>
-          <li>
-            <b style="color: var(--fg)">Order-preserving append</b> — LWW
-            collapses concurrent writes. Model as a G-Set + sort on read.
-          </li>
-        </ul>
+      <div class="wrap">
+        <div class="notfor">
+          <h3>not a fit for everything</h3>
+          <ul>
+            <li>
+              <b>durable source of truth</b> — no durability guarantee, use
+              Postgres.
+            </li>
+            <li>
+              <b>large datasets</b> — every pod holds the full map, use sharded
+              storage.
+            </li>
+            <li>
+              <b>strong consistency</b> — LWW only, use etcd or a real Raft lib.
+            </li>
+            <li>
+              <b>cross-region replication</b> — designed for in-cluster
+              sub-millisecond fan-out, not WAN.
+            </li>
+            <li>
+              <b>order-preserving append</b> — LWW collapses concurrent writes;
+              model as a G-Set + sort on read.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="end">
+      <div class="wrap">
+        <h2>start in 30 seconds</h2>
+        <pre><span class="p">$</span> <span class="c">go get</span> github.com/thanhphuchuynh/podshare@latest
+<span class="p">$</span> <span class="c">go run</span> github.com/thanhphuchuynh/podshare/examples/basic@latest</pre>
+        <div class="cta">
+          <a
+            class="btn btn-primary"
+            href="https://github.com/thanhphuchuynh/podshare"
+            target="_blank"
+            >★ Star on GitHub →</a
+          >
+          <a
+            class="btn"
+            href="https://pkg.go.dev/github.com/thanhphuchuynh/podshare"
+            target="_blank"
+            >Read the godoc →</a
+          >
+        </div>
       </div>
     </section>
 
     <footer>
       <div class="wrap">
         <div>
-          podshare · pre-1.0 · go 1.26 · ProtocolVersion 1
+          podshare · pre-1.0 · go 1.26 · MIT
         </div>
         <div class="meta">
           <a href="https://github.com/thanhphuchuynh/podshare" target="_blank"
@@ -1036,13 +1430,13 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
     </footer>
 
     <script>
-      // ---- demo state machine ---------------------------------------------
+      // ===== demo state ====================================================
       const pods = [
         { id: "pod-1", state: {}, online: true },
         { id: "pod-2", state: {}, online: true },
         { id: "pod-3", state: {}, online: true },
       ];
-      const featureNames = [
+      const flagNames = [
         "checkout_v2",
         "dark_mode",
         "beta_chat",
@@ -1050,7 +1444,7 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         "ai_search",
         "vip_lane",
       ];
-      const featureValues = [
+      const flagValues = [
         "1%",
         "10%",
         "50%",
@@ -1070,13 +1464,8 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
       let autoTimer = null;
       let seq = 0;
 
-      function pick(arr) {
-        return arr[Math.floor(Math.random() * arr.length)];
-      }
-      function now() {
-        const d = new Date();
-        return d.toTimeString().slice(0, 8);
-      }
+      const pick = (a) => a[Math.floor(Math.random() * a.length)];
+      const now = () => new Date().toTimeString().slice(0, 8);
 
       function logLine(text, klass) {
         const el = document.createElement("div");
@@ -1084,13 +1473,16 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         el.innerHTML = `<span class="ts">${now()}</span><span class="${klass || ""}">${text}</span>`;
         log.appendChild(el);
         log.scrollTop = log.scrollHeight;
-        while (log.children.length > 50) log.removeChild(log.firstChild);
+        while (log.children.length > 60) log.removeChild(log.firstChild);
       }
 
       function renderPod(i) {
         const podEl = mesh.querySelector(`.pod[data-pod="${i}"]`);
         const stateEl = podEl.querySelector(".pod-state");
+        const statusEl = podEl.querySelector(".pod-status");
         podEl.classList.toggle("offline", !pods[i].online);
+        statusEl.textContent = pods[i].online ? "online" : "offline";
+
         const entries = Object.entries(pods[i].state);
         if (entries.length === 0) {
           stateEl.className = "pod-state empty";
@@ -1110,54 +1502,46 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
       function flash(i) {
         const podEl = mesh.querySelector(`.pod[data-pod="${i}"]`);
         podEl.classList.add("flash");
-        setTimeout(() => podEl.classList.remove("flash"), 350);
+        setTimeout(() => podEl.classList.remove("flash"), 380);
       }
 
-      function flyPacket(from, to, label) {
+      function flyPacket(from, to, label, kind) {
         const fromEl = mesh.querySelector(`.pod[data-pod="${from}"]`);
         const toEl = mesh.querySelector(`.pod[data-pod="${to}"]`);
         const meshBox = mesh.getBoundingClientRect();
         const f = fromEl.getBoundingClientRect();
         const t = toEl.getBoundingClientRect();
-        const startX = f.left + f.width / 2 - meshBox.left;
-        const startY = f.top + f.height / 2 - meshBox.top;
-        const endX = t.left + t.width / 2 - meshBox.left;
-        const endY = t.top + t.height / 2 - meshBox.top;
 
         const p = document.createElement("div");
-        p.className = "packet";
+        p.className = "packet" + (kind ? " " + kind : "");
         p.textContent = label;
-        p.style.left = startX + "px";
-        p.style.top = startY + "px";
+        p.style.left = f.left + f.width / 2 - meshBox.left + "px";
+        p.style.top = f.top + f.height / 2 - meshBox.top + "px";
         p.style.transform = "translate(-50%, -50%)";
         mesh.appendChild(p);
 
         requestAnimationFrame(() => {
-          p.style.transition = "left 0.55s cubic-bezier(.4,.0,.2,1), top 0.55s cubic-bezier(.4,.0,.2,1), opacity 0.4s";
-          p.style.left = endX + "px";
-          p.style.top = endY + "px";
+          p.style.transition =
+            "left 0.55s cubic-bezier(.4,.0,.2,1), top 0.55s cubic-bezier(.4,.0,.2,1), opacity 0.45s ease 0.4s";
+          p.style.left = t.left + t.width / 2 - meshBox.left + "px";
+          p.style.top = t.top + t.height / 2 - meshBox.top + "px";
         });
-        setTimeout(() => {
-          p.style.opacity = "0";
-        }, 500);
-        setTimeout(() => p.remove(), 720);
+        setTimeout(() => (p.style.opacity = "0"), 540);
+        setTimeout(() => p.remove(), 1000);
       }
 
-      function write(originIdx, key, value, isSnap) {
-        if (!pods[originIdx].online && !isSnap) return;
+      function write(originIdx, key, value) {
+        if (!pods[originIdx].online) return;
         seq++;
         pods[originIdx].state[key] = value;
         flash(originIdx);
         renderPod(originIdx);
-        const ev = isSnap ? "snap" : "set";
         logLine(
-          `${pods[originIdx].id} ${ev} ${key} = "${value}" (seq=${seq})`,
-          isSnap ? "ev-snap" : "ev-set",
+          `${pods[originIdx].id} set ${key} = "${value}" (seq=${seq})`,
+          "ev-set",
         );
-
         pods.forEach((p, i) => {
-          if (i === originIdx) return;
-          if (!p.online) return;
+          if (i === originIdx || !p.online) return;
           flyPacket(originIdx, i, `${key}=${value}`);
           setTimeout(() => {
             p.state[key] = value;
@@ -1167,63 +1551,39 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         });
       }
 
-      function deleteKey(originIdx, key) {
-        if (!pods[originIdx].online) return;
-        seq++;
-        delete pods[originIdx].state[key];
-        flash(originIdx);
-        renderPod(originIdx);
-        logLine(`${pods[originIdx].id} delete ${key} (seq=${seq})`, "ev-delete");
-
-        pods.forEach((p, i) => {
-          if (i === originIdx) return;
-          if (!p.online) return;
-          flyPacket(originIdx, i, `del ${key}`);
-          setTimeout(() => {
-            delete p.state[key];
-            renderPod(i);
-            flash(i);
-          }, 560);
-        });
-      }
-
       function togglePod(i) {
         pods[i].online = !pods[i].online;
         if (!pods[i].online) {
-          logLine(`${pods[i].id} went offline`, "ev-delete");
+          logLine(`${pods[i].id} went offline`, "ev-del");
           renderPod(i);
-        } else {
-          logLine(`${pods[i].id} reconnecting → fetching snapshot`, "ev-snap");
-          renderPod(i);
-          // Hydrate from a live peer.
-          const live = pods.find((p, j) => j !== i && p.online);
-          if (live) {
-            const snap = { ...live.state };
-            setTimeout(() => {
-              flyPacket(pods.indexOf(live), i, "snapshot");
-              setTimeout(() => {
-                pods[i].state = snap;
-                renderPod(i);
-                flash(i);
-                logLine(
-                  `${pods[i].id} snapshot applied (${Object.keys(snap).length} keys)`,
-                  "ev-snap",
-                );
-              }, 560);
-            }, 200);
-          }
+          return;
         }
+        logLine(`${pods[i].id} reconnecting → fetching snapshot`, "ev-snap");
+        renderPod(i);
+        const live = pods.find((p, j) => j !== i && p.online);
+        if (!live) return;
+        const snap = { ...live.state };
+        const liveIdx = pods.indexOf(live);
+        setTimeout(() => {
+          flyPacket(liveIdx, i, "snapshot", "snap");
+          setTimeout(() => {
+            pods[i].state = snap;
+            renderPod(i);
+            flash(i);
+            logLine(
+              `${pods[i].id} snapshot applied (${Object.keys(snap).length} keys)`,
+              "ev-snap",
+            );
+          }, 560);
+        }, 220);
       }
 
       function randomWrite() {
         const liveIdxs = pods
           .map((p, i) => (p.online ? i : -1))
           .filter((i) => i >= 0);
-        if (liveIdxs.length === 0) return;
-        const origin = pick(liveIdxs);
-        const key = pick(featureNames);
-        const value = pick(featureValues);
-        write(origin, key, value);
+        if (!liveIdxs.length) return;
+        write(pick(liveIdxs), pick(flagNames), pick(flagValues));
       }
 
       function scheduleAuto() {
@@ -1235,26 +1595,19 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         }, 1800 + Math.random() * 1200);
       }
 
-      // ---- wire up controls ------------------------------------------------
+      // ===== wire up =======================================================
       mesh.addEventListener("click", (e) => {
         const podEl = e.target.closest(".pod");
         if (!podEl) return;
         const i = +podEl.dataset.pod;
         if (e.target.tagName === "BUTTON") {
           const action = e.target.dataset.action;
-          if (action === "toggle") {
-            togglePod(i);
-            return;
-          }
-          if (action === "write") {
-            write(i, pick(featureNames), pick(featureValues));
-            return;
-          }
+          if (action === "toggle") return togglePod(i);
+          if (action === "write")
+            return write(i, pick(flagNames), pick(flagValues));
         }
-        // Default click on pod body — write
-        write(i, pick(featureNames), pick(featureValues));
+        write(i, pick(flagNames), pick(flagValues));
       });
-
       autoBtn.addEventListener("click", () => {
         auto = !auto;
         autoBtn.classList.toggle("active", auto);
@@ -1262,7 +1615,6 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         if (auto) scheduleAuto();
         else clearTimeout(autoTimer);
       });
-
       resetBtn.addEventListener("click", () => {
         for (const p of pods) {
           p.state = {};
@@ -1274,12 +1626,12 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
         logLine("reset", "ev-snap");
       });
 
-      // ---- code tabs -------------------------------------------------------
+      // code tabs
       document.getElementById("tabs").addEventListener("click", (e) => {
-        const tab = e.target.closest(".tab");
+        const tab = e.target.closest(".code-tab");
         if (!tab) return;
         document
-          .querySelectorAll(".tab")
+          .querySelectorAll(".code-tab")
           .forEach((t) => t.classList.toggle("active", t === tab));
         const which = tab.dataset.tab;
         document
@@ -1289,11 +1641,10 @@ ep.<span class="tok-n">Call</span>(ctx, <span class="tok-s">"ws:alice"</span>, <
           );
       });
 
-      // ---- kick off --------------------------------------------------------
+      // kick off
       pods.forEach((_, i) => renderPod(i));
-      logLine("3 pods joined topic", "ev-snap");
+      logLine("3 pods joined topic 'demo'", "ev-snap");
       scheduleAuto();
-      // First write after a beat so the page is visible.
       setTimeout(() => write(0, "checkout_v2", "canary"), 600);
     </script>
   </body>

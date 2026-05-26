@@ -4,7 +4,17 @@ examples/chat-cache/chat-cache
 examples/feature-flags/feature-flags
 examples/p2p/p2p
 examples/redis/redis
+examples/web/web
 examples/ws-routing/ws-routing
+
+# `go build ./examples/<name>` from the repo root drops the binary here
+/basic
+/chat-cache
+/feature-flags
+/p2p
+/redis
+/web
+/ws-routing
 
 # Test + coverage output
 *.test

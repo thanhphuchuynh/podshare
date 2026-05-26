@@ -100,6 +100,8 @@ Comparison with **olric**, **NATS JetStream KV**, **etcd v3**,
 - [`callreply`](./callreply) — RPC layer for "call this method on whichever
   pod owns target X" (e.g., forwarding a push to the pod holding a
   user's WebSocket)
+- [`prom`](./prom) — Prometheus collector wrapping `Stats()`. Optional;
+  only imports `client_golang` when you import this subpackage.
 - [`examples/basic`](./examples/basic), [`redis`](./examples/redis),
   [`p2p`](./examples/p2p), [`chat-cache`](./examples/chat-cache),
   [`feature-flags`](./examples/feature-flags),
