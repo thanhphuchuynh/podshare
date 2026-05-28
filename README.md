@@ -53,13 +53,14 @@ store.Set(ctx, key, value)
 store.Delete(ctx, key)
 store.SetMany(ctx, kvs)         // atomic on local view
 store.DeleteMany(ctx, keys)
-store.SetIf(ctx, key, value, prev)  // best-effort CAS (see godoc)
+store.TrySet(ctx, key, value, prev)  // best-effort versioned CAS (see godoc)
 store.Seed(initial)             // hydrate at startup without broadcasting
 
 // Watch — non-blocking dispatch, slow watchers are dropped
-store.Watch(ctx)                // all events
-store.WatchKey(ctx, key)        // one key
-store.WatchPrefix(ctx, prefix)  // "ws:", "feature:checkout:" …
+store.Watch(ctx)                                       // all events
+store.Watch(ctx, podshare.WatchKey("alice"))           // one key
+store.Watch(ctx, podshare.WatchPrefix("ws:"))          // a prefix
+store.Watch(ctx, podshare.WatchFilter(myPredicate))    // arbitrary filter
 
 // Recovery
 store.Refresh(ctx)              // re-fetch snapshot, merge under LWW
@@ -105,7 +106,112 @@ Comparison with **olric**, **NATS JetStream KV**, **etcd v3**,
 - [`examples/basic`](./examples/basic), [`redis`](./examples/redis),
   [`p2p`](./examples/p2p), [`chat-cache`](./examples/chat-cache),
   [`feature-flags`](./examples/feature-flags),
-  [`ws-routing`](./examples/ws-routing)
+  [`ws-routing`](./examples/ws-routing),
+  [`web`](./examples/web) (interactive browser demo, 3 pods in one process)
+
+## Peer discovery (P2P transport)
+
+The `Peers` slice you pass at construction is the *initial* set, not
+the full one. After construction, use `AddPeer` / `RemovePeer` (or the
+bundled `DNSDiscoverer`) to react to the fleet changing size — whether
+the change came from HPA, manual `kubectl scale`, a deploy roll, or
+hand-managed VMs.
+
+The core primitives:
+
+```go
+tr.AddPeer("10.0.0.5:9101")    // start dialing
+tr.RemovePeer("10.0.0.5:9101") // cancel dial + close existing conn
+tr.Peers()                     // []string of currently-configured peers
+```
+
+`SyncPeers` reconciles a discovered set against the transport's current
+peers on every tick — it adds new addresses and removes ones no longer
+present. Idempotent.
+
+```go
+sync := transport.SyncPeers(tr)
+sync([]string{"10.0.0.1:9101", "10.0.0.2:9101"})
+```
+
+Pick the discovery source that matches your platform:
+
+### Kubernetes — headless Service + DNS
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: podshare-headless
+spec:
+  clusterIP: None        # headless: DNS returns all pod IPs
+  selector: { app: my-app }
+  ports: [{ port: 9101 }]
+```
+
+```go
+go (&transport.DNSDiscoverer{
+    Host:     "podshare-headless.default.svc.cluster.local",
+    Port:     9101,
+    Self:     net.JoinHostPort(os.Getenv("POD_IP"), "9101"),
+    Interval: 10 * time.Second,
+    OnError:  func(e error) { slog.Warn("discovery", "err", e) },
+}).Run(ctx, transport.SyncPeers(tr))
+```
+
+Works the same for HPA, manual `kubectl scale`, deploy rolls — kube-DNS
+updates A records the moment a pod becomes Ready, and the discoverer
+picks it up on its next tick.
+
+### Static list from env / config
+
+For small fleets you scale by hand:
+
+```go
+// PODSHARE_PEERS=10.0.0.1:9101,10.0.0.2:9101
+for _, p := range strings.Split(os.Getenv("PODSHARE_PEERS"), ",") {
+    tr.AddPeer(strings.TrimSpace(p))
+}
+```
+
+To grow, redeploy with a new env var. `AddPeer` is idempotent, so
+re-applying the full list at startup is safe.
+
+### File watch
+
+When the peer list lives in a shared file (Ansible-rendered, NFS, etc.):
+
+```go
+go func() {
+    sync := transport.SyncPeers(tr)
+    for {
+        peers := readLines("/etc/podshare/peers")
+        sync(peers)
+        time.Sleep(10 * time.Second)
+    }
+}()
+```
+
+### Admin HTTP endpoint
+
+For ops-driven scale (lock it behind auth in production):
+
+```go
+mux.HandleFunc("POST /admin/peers", func(w http.ResponseWriter, r *http.Request) {
+    tr.AddPeer(r.URL.Query().Get("addr"))
+    w.WriteHeader(http.StatusNoContent)
+})
+mux.HandleFunc("DELETE /admin/peers", func(w http.ResponseWriter, r *http.Request) {
+    tr.RemovePeer(r.URL.Query().Get("addr"))
+    w.WriteHeader(http.StatusNoContent)
+})
+```
+
+### Centralized registry (etcd / Consul / Redis)
+
+For larger or multi-tenant clusters, watch a key prefix and feed updates
+into the same `SyncPeers` callback. Any source that produces a list of
+addresses works — the transport's API is intentionally narrow.
 
 ## Operational gotchas
 

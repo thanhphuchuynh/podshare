@@ -1166,6 +1166,15 @@ ep.<span class="tk-n">Call</span>(ctx, <span class="tk-s">"ws:alice"</span>, <sp
             </p>
           </div>
           <div class="feature">
+            <div class="ic">⇆</div>
+            <h3>Dynamic peer discovery</h3>
+            <p>
+              <code>AddPeer</code> / <code>RemovePeer</code> at runtime, plus a
+              bundled <code>DNSDiscoverer</code> for K8s headless Services.
+              Survives autoscaling without code changes.
+            </p>
+          </div>
+          <div class="feature">
             <div class="ic">↻</div>
             <h3>LWW + Seq tiebreaker</h3>
             <p>

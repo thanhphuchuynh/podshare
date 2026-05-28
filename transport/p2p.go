@@ -68,7 +68,6 @@ type P2POptions struct {
 // pod restarts, wrap the transport with a backing store (etcd, S3, …).
 type P2PTransport struct {
 	listenAddr string
-	peers      []string
 	dialT      time.Duration
 	reconn     time.Duration
 	snapTO     time.Duration
@@ -85,6 +84,12 @@ type P2PTransport struct {
 	subs      map[string]chan []byte
 	snapshots map[string][]byte
 	conns     map[*p2pConn]struct{}
+
+	// peerCancels tracks active per-peer dial loops. AddPeer adds an
+	// entry + spawns the loop; RemovePeer calls the cancel func, which
+	// terminates that loop alone (not the rest of the mesh).
+	peersMu     sync.Mutex
+	peerCancels map[string]context.CancelFunc
 
 	snapReqMu       sync.Mutex
 	pendingSnapReqs map[string]chan []byte
@@ -142,7 +147,6 @@ func NewP2PTransport(opts P2POptions) (*P2PTransport, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &P2PTransport{
 		listenAddr:      opts.Listen,
-		peers:           append([]string(nil), opts.Peers...),
 		dialT:           opts.DialTimeout,
 		reconn:          opts.ReconnectInterval,
 		snapTO:          opts.SnapshotTimeout,
@@ -156,6 +160,7 @@ func NewP2PTransport(opts P2POptions) (*P2PTransport, error) {
 		subs:            make(map[string]chan []byte),
 		snapshots:       make(map[string][]byte),
 		conns:           make(map[*p2pConn]struct{}),
+		peerCancels:     make(map[string]context.CancelFunc),
 		pendingSnapReqs: make(map[string]chan []byte),
 		ctx:             ctx,
 		cancel:          cancel,
@@ -164,12 +169,77 @@ func NewP2PTransport(opts P2POptions) (*P2PTransport, error) {
 	t.wg.Add(1)
 	go t.acceptLoop()
 
-	for _, peer := range t.peers {
-		t.wg.Add(1)
-		go t.dialLoop(peer)
+	for _, peer := range opts.Peers {
+		t.AddPeer(peer)
 	}
 
 	return t, nil
+}
+
+// AddPeer registers addr in the peer set and starts dialing it. Idempotent —
+// calling with an address that's already known is a no-op and returns false.
+// Returns true if a new dial loop was started.
+//
+// Use this from a discovery loop (DNS, K8s Endpoints, gossip) to bring new
+// pods into the mesh after construction. The dial loop honors the
+// transport's reconnect interval and TLS config; it exits when either
+// RemovePeer is called for this addr or the transport is closed.
+func (t *P2PTransport) AddPeer(addr string) bool {
+	if t.isClosed() || addr == "" {
+		return false
+	}
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	if _, exists := t.peerCancels[addr]; exists {
+		return false
+	}
+	dialCtx, cancel := context.WithCancel(t.ctx)
+	t.peerCancels[addr] = cancel
+	t.wg.Add(1)
+	go t.dialLoop(dialCtx, addr)
+	return true
+}
+
+// RemovePeer cancels the dial loop for addr and closes any connection
+// established to it. Idempotent — returns false if addr wasn't known.
+func (t *P2PTransport) RemovePeer(addr string) bool {
+	t.peersMu.Lock()
+	cancel, ok := t.peerCancels[addr]
+	if ok {
+		delete(t.peerCancels, addr)
+	}
+	t.peersMu.Unlock()
+	if !ok {
+		return false
+	}
+	cancel()
+
+	// Close existing connections to that remote so we don't keep ferrying
+	// frames to a peer we no longer want in the mesh.
+	t.mu.Lock()
+	var toClose []*p2pConn
+	for c := range t.conns {
+		if c.nc.RemoteAddr().String() == addr {
+			toClose = append(toClose, c)
+		}
+	}
+	t.mu.Unlock()
+	for _, c := range toClose {
+		c.close()
+	}
+	return true
+}
+
+// Peers returns the currently-configured peer addresses. Order is undefined.
+// Useful for diffing against a discovery snapshot.
+func (t *P2PTransport) Peers() []string {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	out := make([]string, 0, len(t.peerCancels))
+	for addr := range t.peerCancels {
+		out = append(out, addr)
+	}
+	return out
 }
 
 // Addr returns the bound listener address — useful when Listen was ":0"
@@ -202,11 +272,13 @@ func (t *P2PTransport) acceptLoop() {
 	}
 }
 
-func (t *P2PTransport) dialLoop(addr string) {
+func (t *P2PTransport) dialLoop(ctx context.Context, addr string) {
 	defer t.wg.Done()
 	for {
-		if t.isClosed() {
+		select {
+		case <-ctx.Done():
 			return
+		default:
 		}
 
 		var (
@@ -217,7 +289,7 @@ func (t *P2PTransport) dialLoop(addr string) {
 		if t.tlsConfig != nil {
 			c, err = tls.DialWithDialer(&d, "tcp", addr, t.tlsConfig)
 		} else {
-			c, err = d.DialContext(t.ctx, "tcp", addr)
+			c, err = d.DialContext(ctx, "tcp", addr)
 		}
 		if err == nil {
 			t.tuneTCP(c)
@@ -227,7 +299,7 @@ func (t *P2PTransport) dialLoop(addr string) {
 		}
 
 		select {
-		case <-t.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(t.reconn):
 		}

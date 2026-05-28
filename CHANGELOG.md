@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased — dynamic P2P peer discovery
+
+### Added
+
+- **`P2PTransport.AddPeer` / `RemovePeer` / `Peers`** — the peer set is
+  no longer fixed at construction. AddPeer spawns a per-peer dial loop
+  with its own context; RemovePeer cancels that loop and closes the
+  corresponding connection. Both are idempotent. Used by discovery loops
+  to track Kubernetes scaling events.
+- **`transport.DNSDiscoverer`** — periodic DNS resolution against a
+  headless-Service-style hostname. Supports a `Self` filter so your own
+  IP doesn't end up in your peer set, and a `LookupHost` override so
+  tests can inject a fake resolver.
+- **`transport.SyncPeers(t *P2PTransport)`** — callback that reconciles
+  the transport's peer set against a discovered set on every tick. Drop
+  this into `DNSDiscoverer.Run` and forget about it.
+
+### Refactor (internal)
+
+- `dialLoop` now takes a `context.Context` (one per peer) so RemovePeer
+  can terminate a single dial loop without unwinding the whole mesh.
+  The transport-wide context is still the parent, so Close still
+  cancels everything.
+
+### Docs
+
+- README has a Kubernetes section showing the headless-Service +
+  `DNSDiscoverer` pattern end-to-end.
+
+### Tests
+
+- `TestAddRemovePeerIdempotent` — re-adds and re-removes a peer; verifies
+  Peers() reflects the set correctly.
+- `TestSyncPeersReconciles` — three ticks (add two, swap one, empty);
+  Peers() converges to the discovered set each time.
+- `TestDNSDiscovererInvokesSyncWithResolvedPeers` — injected resolver;
+  verifies Self filtering and address concatenation.
+- `TestDNSDiscovererReportsLookupErrors` — failing resolver fires OnError.
+
 ## Unreleased — observability + schema-drift detection
 
 ### Added

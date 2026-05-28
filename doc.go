@@ -80,4 +80,14 @@
 // at-most-once (Redis Pub/Sub does not replay missed messages);
 // P2PTransport is plaintext unless you supply a TLSConfig with
 // mTLS for authenticated meshes.
+//
+// # P2P peer discovery
+//
+// P2PTransport's Peers list at construction is just the initial set.
+// To react to fleet changes — Kubernetes HPA scaling, manual kubectl
+// scale, deploy rolls, hand-managed VMs — use AddPeer / RemovePeer
+// from a discovery loop. The bundled transport.DNSDiscoverer covers
+// the headless-Service-plus-DNS pattern in Kubernetes; for other
+// sources (env list, file watch, admin HTTP, etcd/Consul) wire your
+// own loop to transport.SyncPeers and the transport reconciles.
 package podshare
